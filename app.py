@@ -138,3 +138,72 @@ class ForecastingApp:
             self.df = create_sample_data()
             st.session_state.df = self.df
             st.success("✅ Sample data loaded!")
+
+    def view_data_page(self):
+        """Display processed data and statistics"""
+        st.header("📊 Data Explorer")
+        
+        if st.session_state.df is not None:
+            df = st.session_state.df.copy()
+            
+            # Data summary
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.metric("Dataset Size", f"{len(df):,}")
+                st.metric("Date Range", f"{df['date'].min().strftime('%Y-%m-%d')} to {df['date'].max().strftime('%Y-%m-%d')}")
+            
+            with col2:
+                st.metric("Total Sales", f"₹{df['sales'].sum():,.0f}")
+                st.metric("Avg Daily", f"{df['sales'].mean():.0f} units")
+            
+            # Raw data table
+            st.subheader("Raw Dataset")
+            st.dataframe(df, use_container_width=True)
+            
+            # Statistics
+            st.subheader("📈 Data Statistics")
+            st.dataframe(df.describe(), use_container_width=True)
+            
+        else:
+            st.warning("👈 Please upload data first!")
+
+    def train_model_page(self):
+        """Train ML models"""
+        st.header("🤖 Model Training")
+        
+        if st.session_state.df is not None:
+            df = st.session_state.df.copy()
+            
+            if st.button("🚀 Train All Models", type="primary", use_container_width=True):
+                with st.spinner("Training Prophet + LightGBM models..."):
+                    # Initialize forecaster if not exists
+                    if st.session_state.forecaster is None:
+                        st.session_state.forecaster = DemandForecaster()
+                    
+                    # Fetch weather data
+                    weather_df = self.weather_api.get_historical_weather(
+                        df['date'].min().strftime('%Y-%m-%d'),
+                        df['date'].max().strftime('%Y-%m-%d')
+                    )
+                    
+                    # Preprocess
+                    self.processed_df, self.feature_info = preprocess_data(df, weather_df)
+                    st.session_state.processed_df = self.processed_df
+                    st.session_state.feature_info = self.feature_info
+                    
+                    # Train models
+                    training_results = st.session_state.forecaster.train_all(self.processed_df, self.feature_info)
+                    
+                    # Update session state
+                    st.session_state.trained = True
+                    
+                    # Display results
+                    st.success("✅ Training completed!")
+                    for result in training_results:
+                        if result['status'] == 'success':
+                            st.metric(result['model'], f"MAE: {result['mae']}")
+                        else:
+                            st.error(f"{result['model']}: {result['error']}")
+        else:
+            st.warning("👈 Please upload data first!")
